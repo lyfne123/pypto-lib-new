@@ -561,3 +561,39 @@ The argument types of **incore functions** are extended to include **PIPE_IN** a
 - **In-cluster communication**: TPUSH/TPOP within incore functions, instead of TSTORE/TLOAD.
 - **Scope**: started by blocking **allocate_cluster**; **clusterID** is passed into every function in the group and recorded in the task descriptor so the runtime schedules those tasks only on that cluster while respecting data dependencies. The program does not explicitly free the cluster; the pto-runtime **automatically** frees it when the **clusterID** tensor is freed by the runtime.
 - **PIPE_IN / PIPE_OUT**: incore argument types for data passed over local interconnect pipes; no global memory allocation by the runtime; programmer must ensure the pipe is fully drained (every push has a matching pop). For dependency tracking they are treated as normal tensors of minimum shape in the tensor map; one producer feeding multiple consumers is expressed as multiple separate PIPE_OUT arguments.
+
+---
+
+## 11. block_incore function
+
+This section adds grammar to express a **block_incore** function: an incore function that is executed in **SPMD** (Single Program Multiple Data) manner.
+
+### 11.1 Call arguments: blockdim and block_id
+
+A call to a **block_incore** function has two additional arguments that identify the block and the overall parallelism:
+
+- **blockdim**  
+  The **total number of blocks**. The function is invoked once per block, so there are **blockdim** concurrent invocations.
+
+- **block_id**  
+  The **index of the block** for this call, in the range `0 .. blockdim-1`. Each invocation receives a distinct **block_id** so that the incore code can compute block-local indices and data.
+
+Every SPMD core (or logical block) runs with a distinct **block_id**; together they form **blockdim** parallel executions of the same incore function.
+
+### 11.2 Use with in-cluster function groups
+
+When a **block_incore** function is used **together with** in-cluster function groups, the orchestration must allocate **enough clusters** to run all blocks. Specifically:
+
+- The number of clusters allocated must **equal blockdim**, so that there is one cluster per block.
+- In practice, **allocate_cluster** is used in a way that provides **blockdim** clusters (e.g. the runtime allocates a set of clusters of size **blockdim**, or the program calls allocation so that the resulting **clusterID** or cluster set has cardinality **blockdim**).
+- Each of the **blockdim** invocations of the block_incore in-cluster function group then runs on one of these clusters, with **block_id** identifying which block (and thus which cluster) that invocation uses.
+
+This ensures there are enough clusters to execute the SPMD incore function groups without oversubscribing or undersubscribing clusters.
+
+### 11.3 Benefits and orchestration modes
+
+- **Task compression and runtime overhead**  
+  The **block_incore** function provides an effective way to **compress the number of tasks** seen by the pto-runtime. Instead of scheduling many fine-grained tasks (e.g. one per tile or per element), the runtime schedules one (or a few) block_incore tasks, each of which runs **blockdim** parallel blocks internally. This **lowers the overhead** of the pto-runtime (fewer task descriptors, less scheduling and dependency tracking at the orchestration level).
+
+- **PyTorch eager execution mode**  
+  The **block_incore** function can also be **orchestrated in PyTorch eager execution mode**. In this mode, the program launches SPMD kernels written in the **pyPTO** grammar and compile chain directly from Python, without using the pto-runtime. This gives a **simple path** to run pyPTO-compiled SPMD kernels (e.g. for prototyping or when full task-graph scheduling is not needed), avoiding the complexity of the pto-runtime while still reusing the same pyPTO front-end and compiler.
