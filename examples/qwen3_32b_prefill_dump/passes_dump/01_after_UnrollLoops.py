@@ -4,9 +4,13 @@ import pypto.language as pl
 @pl.program
 class Qwen3SingleLayerPrefill:
     @pl.function
-    def qwen3_prefill_layer(self, hidden_states: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16], rope_cos: pl.Tensor[[4096, 128], pl.FP32], rope_sin: pl.Tensor[[4096, 128], pl.FP32], k_cache: pl.Tensor[[524288, 128], pl.BFLOAT16], v_cache: pl.Tensor[[524288, 128], pl.BFLOAT16], input_rms_weight: pl.Tensor[[1, 5120], pl.FP32], wq: pl.Tensor[[5120, 5120], pl.BFLOAT16], wk: pl.Tensor[[5120, 1024], pl.BFLOAT16], wv: pl.Tensor[[5120, 1024], pl.BFLOAT16], wo: pl.Tensor[[5120, 5120], pl.BFLOAT16], post_rms_weight: pl.Tensor[[1, 5120], pl.FP32], w_gate: pl.Tensor[[5120, 25600], pl.BFLOAT16], w_up: pl.Tensor[[5120, 25600], pl.BFLOAT16], w_down: pl.Tensor[[25600, 5120], pl.BFLOAT16], out: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16]) -> pl.Tensor[[16, 4096, 5120], pl.BFLOAT16]:
+    def qwen3_prefill_layer(self, hidden_states: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16], seq_lens: pl.Tensor[[16], pl.INT32], rope_cos: pl.Tensor[[4096, 128], pl.FP32], rope_sin: pl.Tensor[[4096, 128], pl.FP32], k_cache: pl.Tensor[[524288, 128], pl.BFLOAT16], v_cache: pl.Tensor[[524288, 128], pl.BFLOAT16], input_rms_weight: pl.Tensor[[1, 5120], pl.FP32], wq: pl.Tensor[[5120, 5120], pl.BFLOAT16], wk: pl.Tensor[[5120, 1024], pl.BFLOAT16], wv: pl.Tensor[[5120, 1024], pl.BFLOAT16], wo: pl.Tensor[[5120, 5120], pl.BFLOAT16], post_rms_weight: pl.Tensor[[1, 5120], pl.FP32], w_gate: pl.Tensor[[5120, 25600], pl.BFLOAT16], w_up: pl.Tensor[[5120, 25600], pl.BFLOAT16], w_down: pl.Tensor[[25600, 5120], pl.BFLOAT16], out: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16]) -> pl.Tensor[[16, 4096, 5120], pl.BFLOAT16]:
         for b in pl.parallel(0, 16, 1, chunk=4):
-            for p0 in pl.range(0, 4096, 4):
+            seq_len_b: pl.Scalar[pl.INT32] = pl.tensor.read(seq_lens, [b])
+            tok_blocks: pl.Scalar[pl.INDEX] = (pl.cast(seq_len_b, pl.INDEX) + 4 - 1) // 4
+            for p0_idx in pl.range(0, tok_blocks, 1):
+                p0: pl.Scalar[pl.INDEX] = p0_idx * 4
+                valid_tok: pl.Scalar[pl.INDEX] = min(4, pl.cast(seq_len_b, pl.INDEX) - p0)
                 with pl.auto_incore():
                     sq_sum: pl.Tensor[[4, 1], pl.FP32] = pl.tensor.create([4, 1], dtype=pl.FP32)
                     sq_sum: pl.Tensor[[4, 1], pl.FP32] = pl.tensor.mul(sq_sum, 0.0)
@@ -51,7 +55,7 @@ class Qwen3SingleLayerPrefill:
                 with pl.auto_incore():
                     attn_tile: pl.Tensor[[4, 5120], pl.FP32] = pl.tensor.create([4, 5120], dtype=pl.FP32)
                     attn_tile: pl.Tensor[[4, 5120], pl.FP32] = pl.tensor.mul(attn_tile, 0.0)
-                    for ti in pl.range(0, 4, 1):
+                    for ti in pl.range(0, valid_tok, 1):
                         pos: pl.Scalar[pl.INDEX] = p0 + ti
                         ctx_len: pl.Scalar[pl.INDEX] = pos + 1
                         ctx_blocks: pl.Scalar[pl.INDEX] = (ctx_len + 120 - 1) // 120

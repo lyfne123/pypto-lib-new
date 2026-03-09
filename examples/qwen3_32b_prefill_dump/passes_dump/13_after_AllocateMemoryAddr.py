@@ -4,122 +4,126 @@ import pypto.language as pl
 @pl.program
 class Qwen3SingleLayerPrefill:
     @pl.function(type=pl.FunctionType.Orchestration)
-    def qwen3_prefill_layer(self, hidden_states_0: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 671088640, 0)], rope_cos_0: pl.Tensor[[4096, 128], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 2097152, 1)], rope_sin_0: pl.Tensor[[4096, 128], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 2097152, 2)], k_cache_0: pl.Tensor[[524288, 128], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 134217728, 3)], v_cache_0: pl.Tensor[[524288, 128], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 134217728, 4)], input_rms_weight_0: pl.Tensor[[1, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 20480, 5)], wq_0: pl.Tensor[[5120, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 52428800, 6)], wk_0: pl.Tensor[[5120, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 10485760, 7)], wv_0: pl.Tensor[[5120, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 10485760, 8)], wo_0: pl.Tensor[[5120, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 52428800, 9)], post_rms_weight_0: pl.Tensor[[1, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 20480, 10)], w_gate_0: pl.Tensor[[5120, 25600], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 262144000, 11)], w_up_0: pl.Tensor[[5120, 25600], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 262144000, 12)], w_down_0: pl.Tensor[[25600, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 262144000, 13)], out_0: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 671088640, 14)]) -> pl.Tensor[[16, 4096, 5120], pl.BFLOAT16]:
+    def qwen3_prefill_layer(self, hidden_states_0: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 671088640, 0)], seq_lens_0: pl.Tensor[[16], pl.INT32, pl.MemRef(pl.MemorySpace.DDR, -1, 64, 1)], rope_cos_0: pl.Tensor[[4096, 128], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 2097152, 2)], rope_sin_0: pl.Tensor[[4096, 128], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 2097152, 3)], k_cache_0: pl.Tensor[[524288, 128], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 134217728, 4)], v_cache_0: pl.Tensor[[524288, 128], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 134217728, 5)], input_rms_weight_0: pl.Tensor[[1, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 20480, 6)], wq_0: pl.Tensor[[5120, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 52428800, 7)], wk_0: pl.Tensor[[5120, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 10485760, 8)], wv_0: pl.Tensor[[5120, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 10485760, 9)], wo_0: pl.Tensor[[5120, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 52428800, 10)], post_rms_weight_0: pl.Tensor[[1, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 20480, 11)], w_gate_0: pl.Tensor[[5120, 25600], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 262144000, 12)], w_up_0: pl.Tensor[[5120, 25600], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 262144000, 13)], w_down_0: pl.Tensor[[25600, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 262144000, 14)], out_0: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 671088640, 15)]) -> pl.Tensor[[16, 4096, 5120], pl.BFLOAT16]:
         for b_0, (k_cache_iter_1, out_iter_1, v_cache_iter_1) in pl.parallel(0, 16, 1, init_values=(k_cache_0, out_0, v_cache_0), chunk=4):
-            for p0_0, (k_cache_iter_3, out_iter_3, v_cache_iter_3) in pl.range(0, 4096, 4, init_values=(k_cache_iter_1, out_iter_1, v_cache_iter_1)):
-                sq_sum_0: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 15)] = pl.tensor.create([4, 1], dtype=pl.FP32)
-                sq_sum_1: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 16)] = pl.tensor.mul(sq_sum_0, 0.0)
+            seq_len_b_0: pl.Scalar[pl.INT32] = pl.tensor.read(seq_lens_0, [b_0])
+            tok_blocks_0: pl.Scalar[pl.INDEX] = (pl.cast(seq_len_b_0, pl.INDEX) + 4 - 1) // 4
+            for p0_idx_0, (k_cache_iter_3, out_iter_3, v_cache_iter_3) in pl.range(0, tok_blocks_0, 1, init_values=(k_cache_iter_1, out_iter_1, v_cache_iter_1)):
+                p0_0: pl.Scalar[pl.INDEX] = p0_idx_0 * 4
+                valid_tok_0: pl.Scalar[pl.INDEX] = min(4, pl.cast(seq_len_b_0, pl.INDEX) - p0_0)
+                sq_sum_0: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 16)] = pl.tensor.create([4, 1], dtype=pl.FP32)
+                sq_sum_1: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 17)] = pl.tensor.mul(sq_sum_0, 0.0)
                 for kb_0, (sq_sum_iter_2,) in pl.range(0, 20, 1, init_values=(sq_sum_1,)):
                     k0_0: pl.Scalar[pl.INDEX] = kb_0 * 256
-                    _t0: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 17)] = pl.tensor.view(hidden_states_0, [4, 256], [b_0, p0_0, k0_0])
-                    x_chunk_0: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 18)] = pl.tensor.cast(_t0, target_type=pl.FP32, mode=2)
-                    _t1: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 19)] = pl.tensor.mul(x_chunk_0, x_chunk_0)
-                    _t2: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 20)] = pl.tensor.row_sum(_t1)
-                    sq_sum_4: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 21)] = pl.tensor.add(sq_sum_iter_2, _t2)
-                    sq_sum_3: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 22)] = pl.yield_(sq_sum_4)
-                _t3: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 23)] = pl.tensor.mul(sq_sum_3, 0.000195313)
-                _t4: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 24)] = pl.tensor.add(_t3, 1e-06)
-                inv_rms_0: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 25)] = pl.tensor.rsqrt(_t4)
-                q_proj_tile_0: pl.Tensor[[4, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 40960, 26)] = pl.tensor.create([4, 5120], dtype=pl.BFLOAT16)
-                k_proj_tile_0: pl.Tensor[[4, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 8192, 27)] = pl.tensor.create([4, 1024], dtype=pl.BFLOAT16)
-                v_proj_tile_0: pl.Tensor[[4, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 8192, 28)] = pl.tensor.create([4, 1024], dtype=pl.BFLOAT16)
+                    _t0: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 18)] = pl.tensor.view(hidden_states_0, [4, 256], [b_0, p0_0, k0_0])
+                    x_chunk_0: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 19)] = pl.tensor.cast(_t0, target_type=pl.FP32, mode=2)
+                    _t1: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 20)] = pl.tensor.mul(x_chunk_0, x_chunk_0)
+                    _t2: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 21)] = pl.tensor.row_sum(_t1)
+                    sq_sum_4: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 22)] = pl.tensor.add(sq_sum_iter_2, _t2)
+                    sq_sum_3: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 23)] = pl.yield_(sq_sum_4)
+                _t3: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 24)] = pl.tensor.mul(sq_sum_3, 0.000195313)
+                _t4: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 25)] = pl.tensor.add(_t3, 1e-06)
+                inv_rms_0: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 26)] = pl.tensor.rsqrt(_t4)
+                q_proj_tile_0: pl.Tensor[[4, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 40960, 27)] = pl.tensor.create([4, 5120], dtype=pl.BFLOAT16)
+                k_proj_tile_0: pl.Tensor[[4, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 8192, 28)] = pl.tensor.create([4, 1024], dtype=pl.BFLOAT16)
+                v_proj_tile_0: pl.Tensor[[4, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 8192, 29)] = pl.tensor.create([4, 1024], dtype=pl.BFLOAT16)
                 for ob_0_out, (k0_iter_1_outer_l0, kb_iter_1_outer_l0, q_proj_tile_iter_1_outer_l0, x_chunk_iter_1_outer_l0) in pl.range(0, 10, 1, init_values=(k0_0, kb_0, q_proj_tile_0, x_chunk_0)):
                     ret: pl.Tuple([pl.Scalar[pl.INDEX], pl.Scalar[pl.INDEX], pl.Tensor[[4, 5120], pl.BFLOAT16], pl.Tensor[[4, 256], pl.FP32]]) = self.call_group(qwen3_prefill_layer_incore_0_group, b_0, hidden_states_0, input_rms_weight_0, inv_rms_0, k0_0, k0_iter_1_outer_l0, kb_0, kb_iter_1_outer_l0, ob_0_out, p0_0, q_proj_tile_0, q_proj_tile_iter_1_outer_l0, wq_0, x_chunk_0, x_chunk_iter_1_outer_l0)
                     k0_iter_1_outer_l1_rv: pl.Scalar[pl.INDEX] = ret[0]
                     kb_iter_1_outer_l1_rv: pl.Scalar[pl.INDEX] = ret[1]
-                    q_proj_tile_iter_1_outer_l1_rv: pl.Tensor[[4, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 40960, 29)] = ret[2]
-                    x_chunk_iter_1_outer_l1_rv: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 30)] = ret[3]
+                    q_proj_tile_iter_1_outer_l1_rv: pl.Tensor[[4, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 40960, 30)] = ret[2]
+                    x_chunk_iter_1_outer_l1_rv: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 31)] = ret[3]
                     k0_iter_1_outer_l0_rv, kb_iter_1_outer_l0_rv, q_proj_tile_iter_1_outer_l0_rv, x_chunk_iter_1_outer_l0_rv = pl.yield_(k0_iter_1_outer_l1_rv, kb_iter_1_outer_l1_rv, q_proj_tile_iter_1_outer_l1_rv, x_chunk_iter_1_outer_l1_rv)
                 for ob_1_out, (gamma_iter_1_outer_l0, k0_iter_6_outer_l0, k_proj_tile_iter_1_outer_l0, kb_iter_4_outer_l0, normed_iter_1_outer_l0, v_proj_tile_iter_1_outer_l0, x_chunk_iter_6_outer_l0) in pl.range(0, 4, 1, init_values=(gamma_0, k0_2, k_proj_tile_0, kb_2, normed_0, v_proj_tile_0, x_chunk_2)):
                     ret: pl.Tuple([pl.Tensor[[1, 256], pl.FP32], pl.Scalar[pl.INDEX], pl.Tensor[[4, 1024], pl.BFLOAT16], pl.Scalar[pl.INDEX], pl.Tensor[[4, 256], pl.FP32], pl.Tensor[[4, 1024], pl.BFLOAT16], pl.Tensor[[4, 256], pl.FP32]]) = self.call_group(qwen3_prefill_layer_incore_1_group, b_0, gamma_0, gamma_iter_1_outer_l0, hidden_states_0, input_rms_weight_0, inv_rms_0, k0_2, k0_iter_6_outer_l0, k_proj_tile_0, k_proj_tile_iter_1_outer_l0, kb_2, kb_iter_4_outer_l0, normed_0, normed_iter_1_outer_l0, ob_1_out, p0_0, v_proj_tile_0, v_proj_tile_iter_1_outer_l0, wk_0, wv_0, x_chunk_2, x_chunk_iter_6_outer_l0)
-                    gamma_iter_1_outer_l1_rv: pl.Tensor[[1, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 1024, 36)] = ret[0]
+                    gamma_iter_1_outer_l1_rv: pl.Tensor[[1, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 1024, 37)] = ret[0]
                     k0_iter_6_outer_l1_rv: pl.Scalar[pl.INDEX] = ret[1]
-                    k_proj_tile_iter_1_outer_l1_rv: pl.Tensor[[4, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 8192, 37)] = ret[2]
+                    k_proj_tile_iter_1_outer_l1_rv: pl.Tensor[[4, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 8192, 38)] = ret[2]
                     kb_iter_4_outer_l1_rv: pl.Scalar[pl.INDEX] = ret[3]
-                    normed_iter_1_outer_l1_rv: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 38)] = ret[4]
-                    v_proj_tile_iter_1_outer_l1_rv: pl.Tensor[[4, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 8192, 39)] = ret[5]
-                    x_chunk_iter_6_outer_l1_rv: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 40)] = ret[6]
+                    normed_iter_1_outer_l1_rv: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 39)] = ret[4]
+                    v_proj_tile_iter_1_outer_l1_rv: pl.Tensor[[4, 1024], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 8192, 40)] = ret[5]
+                    x_chunk_iter_6_outer_l1_rv: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 41)] = ret[6]
                     gamma_iter_1_outer_l0_rv, k0_iter_6_outer_l0_rv, k_proj_tile_iter_1_outer_l0_rv, kb_iter_4_outer_l0_rv, normed_iter_1_outer_l0_rv, v_proj_tile_iter_1_outer_l0_rv, x_chunk_iter_6_outer_l0_rv = pl.yield_(gamma_iter_1_outer_l1_rv, k0_iter_6_outer_l1_rv, k_proj_tile_iter_1_outer_l1_rv, kb_iter_4_outer_l1_rv, normed_iter_1_outer_l1_rv, v_proj_tile_iter_1_outer_l1_rv, x_chunk_iter_6_outer_l1_rv)
-                attn_tile_0: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 46)] = pl.tensor.create([4, 5120], dtype=pl.FP32)
-                attn_tile_1: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 47)] = pl.tensor.mul(attn_tile_0, 0.0)
-                for ti_0, (attn_tile_iter_2, k_cache_iter_5, v_cache_iter_5) in pl.range(0, 4, 1, init_values=(attn_tile_1, k_cache_iter_3, v_cache_iter_3)):
+                attn_tile_0: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 47)] = pl.tensor.create([4, 5120], dtype=pl.FP32)
+                attn_tile_1: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 48)] = pl.tensor.mul(attn_tile_0, 0.0)
+                for ti_0, (attn_tile_iter_2, k_cache_iter_5, v_cache_iter_5) in pl.range(0, valid_tok_0, 1, init_values=(attn_tile_1, k_cache_iter_3, v_cache_iter_3)):
                     pos_0: pl.Scalar[pl.INDEX] = p0_0 + ti_0
                     ctx_len_0: pl.Scalar[pl.INDEX] = pos_0 + 1
                     ctx_blocks_0: pl.Scalar[pl.INDEX] = (ctx_len_0 + 120 - 1) // 120
-                    cos_row_0: pl.Tensor[[1, 128], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 512, 48)] = pl.tensor.view(rope_cos_0, [1, 128], [pos_0, 0])
-                    sin_row_0: pl.Tensor[[1, 128], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 512, 49)] = pl.tensor.view(rope_sin_0, [1, 128], [pos_0, 0])
-                    cos_lo_0: pl.Tensor[[1, 128 // 2], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 0, 50)] = pl.tensor.view(cos_row_0, [1, 128 // 2], [0, 0])
-                    cos_hi_0: pl.Tensor[[1, 128 // 2], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 0, 51)] = pl.tensor.view(cos_row_0, [1, 128 // 2], [0, 128 // 2])
-                    sin_lo_0: pl.Tensor[[1, 128 // 2], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 0, 52)] = pl.tensor.view(sin_row_0, [1, 128 // 2], [0, 0])
-                    sin_hi_0: pl.Tensor[[1, 128 // 2], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 0, 53)] = pl.tensor.view(sin_row_0, [1, 128 // 2], [0, 128 // 2])
-                    attn_row_0: pl.Tensor[[1, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 20480, 54)] = pl.tensor.create([1, 5120], dtype=pl.FP32)
-                    attn_row_1: pl.Tensor[[1, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 20480, 55)] = pl.tensor.mul(attn_row_0, 0.0)
+                    cos_row_0: pl.Tensor[[1, 128], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 512, 49)] = pl.tensor.view(rope_cos_0, [1, 128], [pos_0, 0])
+                    sin_row_0: pl.Tensor[[1, 128], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 512, 50)] = pl.tensor.view(rope_sin_0, [1, 128], [pos_0, 0])
+                    cos_lo_0: pl.Tensor[[1, 128 // 2], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 0, 51)] = pl.tensor.view(cos_row_0, [1, 128 // 2], [0, 0])
+                    cos_hi_0: pl.Tensor[[1, 128 // 2], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 0, 52)] = pl.tensor.view(cos_row_0, [1, 128 // 2], [0, 128 // 2])
+                    sin_lo_0: pl.Tensor[[1, 128 // 2], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 0, 53)] = pl.tensor.view(sin_row_0, [1, 128 // 2], [0, 0])
+                    sin_hi_0: pl.Tensor[[1, 128 // 2], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 0, 54)] = pl.tensor.view(sin_row_0, [1, 128 // 2], [0, 128 // 2])
+                    attn_row_0: pl.Tensor[[1, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 20480, 55)] = pl.tensor.create([1, 5120], dtype=pl.FP32)
+                    attn_row_1: pl.Tensor[[1, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 20480, 56)] = pl.tensor.mul(attn_row_0, 0.0)
                     for h_0_out, (attn_row_iter_2_outer_l0, k_cache_iter_7_outer_l0, v_cache_iter_7_outer_l0) in pl.range(0, 8, 1, init_values=(attn_row_1, k_cache_iter_5, v_cache_iter_5)):
                         ret: pl.Tuple([pl.Tensor[[1, 5120], pl.FP32], pl.Tensor[[524288, 128], pl.BFLOAT16], pl.Tensor[[524288, 128], pl.BFLOAT16]]) = self.call_group(qwen3_prefill_layer_incore_2_group, attn_row_1, attn_row_iter_2_outer_l0, b_0, cos_hi_0, cos_lo_0, ctx_blocks_0, ctx_len_0, h_0_out, k_cache_0, k_cache_iter_1, k_cache_iter_3, k_cache_iter_5, k_cache_iter_7_outer_l0, k_proj_tile_iter_1_outer_l0_rv, pos_0, q_proj_tile_iter_1_outer_l0_rv, sin_hi_0, sin_lo_0, ti_0, v_cache_0, v_cache_iter_1, v_cache_iter_3, v_cache_iter_5, v_cache_iter_7_outer_l0, v_proj_tile_iter_1_outer_l0_rv)
-                        attn_row_iter_2_outer_l1_rv: pl.Tensor[[1, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 20480, 56)] = ret[0]
-                        k_cache_iter_7_outer_l1_rv: pl.Tensor[[524288, 128], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 134217728, 57)] = ret[1]
-                        v_cache_iter_7_outer_l1_rv: pl.Tensor[[524288, 128], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 134217728, 58)] = ret[2]
+                        attn_row_iter_2_outer_l1_rv: pl.Tensor[[1, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 20480, 57)] = ret[0]
+                        k_cache_iter_7_outer_l1_rv: pl.Tensor[[524288, 128], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 134217728, 58)] = ret[1]
+                        v_cache_iter_7_outer_l1_rv: pl.Tensor[[524288, 128], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 134217728, 59)] = ret[2]
                         attn_row_iter_2_outer_l0_rv, k_cache_iter_7_outer_l0_rv, v_cache_iter_7_outer_l0_rv = pl.yield_(attn_row_iter_2_outer_l1_rv, k_cache_iter_7_outer_l1_rv, v_cache_iter_7_outer_l1_rv)
-                    attn_tile_4: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 62)] = pl.tensor.assemble(attn_tile_iter_2, attn_row_iter_2_outer_l0_rv, [ti_0, 0])
+                    attn_tile_4: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 63)] = pl.tensor.assemble(attn_tile_iter_2, attn_row_iter_2_outer_l0_rv, [ti_0, 0])
                     attn_tile_3, k_cache_6, v_cache_6 = pl.yield_(attn_tile_4, k_cache_iter_7_outer_l0_rv, v_cache_iter_7_outer_l0_rv)
-                resid1_tile_0: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 66)] = pl.tensor.create([4, 5120], dtype=pl.FP32)
+                resid1_tile_0: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 67)] = pl.tensor.create([4, 5120], dtype=pl.FP32)
                 for ob_2_out, (k0_iter_11_outer_l0, kb_iter_7_outer_l0, resid1_tile_iter_1_outer_l0) in pl.range(0, 10, 1, init_values=(k0_7, kb_5, resid1_tile_0)):
                     ret: pl.Tuple([pl.Scalar[pl.INDEX], pl.Scalar[pl.INDEX], pl.Tensor[[4, 5120], pl.FP32]]) = self.call_group(qwen3_prefill_layer_incore_3_group, attn_tile_3, b_0, hidden_states_0, k0_7, k0_iter_11_outer_l0, kb_5, kb_iter_7_outer_l0, ob_2_out, p0_0, resid1_tile_0, resid1_tile_iter_1_outer_l0, wo_0)
                     k0_iter_11_outer_l1_rv: pl.Scalar[pl.INDEX] = ret[0]
                     kb_iter_7_outer_l1_rv: pl.Scalar[pl.INDEX] = ret[1]
-                    resid1_tile_iter_1_outer_l1_rv: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 67)] = ret[2]
+                    resid1_tile_iter_1_outer_l1_rv: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 68)] = ret[2]
                     k0_iter_11_outer_l0_rv, kb_iter_7_outer_l0_rv, resid1_tile_iter_1_outer_l0_rv = pl.yield_(k0_iter_11_outer_l1_rv, kb_iter_7_outer_l1_rv, resid1_tile_iter_1_outer_l1_rv)
-                sq_sum_5: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 69)] = pl.tensor.create([4, 1], dtype=pl.FP32)
-                sq_sum_6: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 70)] = pl.tensor.mul(sq_sum_5, 0.0)
+                sq_sum_5: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 70)] = pl.tensor.create([4, 1], dtype=pl.FP32)
+                sq_sum_6: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 71)] = pl.tensor.mul(sq_sum_5, 0.0)
                 for kb_10, (k0_iter_16, sq_sum_iter_7, x_chunk_iter_11) in pl.range(0, 20, 1, init_values=(k0_iter_11_outer_l0_rv, sq_sum_6, x_chunk_iter_6_outer_l0_rv)):
                     k0_18: pl.Scalar[pl.INDEX] = kb_10 * 256
-                    x_chunk_13: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 71)] = pl.tensor.view(resid1_tile_iter_1_outer_l0_rv, [4, 256], [0, k0_18])
-                    _t47: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 72)] = pl.tensor.mul(x_chunk_13, x_chunk_13)
-                    _t48: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 73)] = pl.tensor.row_sum(_t47)
-                    sq_sum_9: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 74)] = pl.tensor.add(sq_sum_iter_7, _t48)
+                    x_chunk_13: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 72)] = pl.tensor.view(resid1_tile_iter_1_outer_l0_rv, [4, 256], [0, k0_18])
+                    _t47: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 73)] = pl.tensor.mul(x_chunk_13, x_chunk_13)
+                    _t48: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 74)] = pl.tensor.row_sum(_t47)
+                    sq_sum_9: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 75)] = pl.tensor.add(sq_sum_iter_7, _t48)
                     k0_17, sq_sum_8, x_chunk_12 = pl.yield_(k0_18, sq_sum_9, x_chunk_13)
-                _t49: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 77)] = pl.tensor.mul(sq_sum_8, 0.000195313)
-                _t50: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 78)] = pl.tensor.add(_t49, 1e-06)
-                inv_rms_1: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 79)] = pl.tensor.rsqrt(_t50)
-                post_norm_tile_0: pl.Tensor[[4, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 40960, 80)] = pl.tensor.create([4, 5120], dtype=pl.BFLOAT16)
-                down_proj_tile_0: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 81)] = pl.tensor.create([4, 5120], dtype=pl.FP32)
-                down_proj_tile_1: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 82)] = pl.tensor.mul(down_proj_tile_0, 0.0)
+                _t49: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 78)] = pl.tensor.mul(sq_sum_8, 0.000195313)
+                _t50: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 79)] = pl.tensor.add(_t49, 1e-06)
+                inv_rms_1: pl.Tensor[[4, 1], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 16, 80)] = pl.tensor.rsqrt(_t50)
+                post_norm_tile_0: pl.Tensor[[4, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 40960, 81)] = pl.tensor.create([4, 5120], dtype=pl.BFLOAT16)
+                down_proj_tile_0: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 82)] = pl.tensor.create([4, 5120], dtype=pl.FP32)
+                down_proj_tile_1: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 83)] = pl.tensor.mul(down_proj_tile_0, 0.0)
                 for kb_11, (gamma_iter_6, k0_iter_19, normed_iter_6, post_norm_tile_iter_1, x_chunk_iter_14) in pl.range(0, 20, 1, init_values=(gamma_iter_1_outer_l0_rv, k0_17, normed_iter_1_outer_l0_rv, post_norm_tile_0, x_chunk_12)):
                     k0_21: pl.Scalar[pl.INDEX] = kb_11 * 256
-                    x_chunk_16: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 83)] = pl.tensor.view(resid1_tile_iter_1_outer_l0_rv, [4, 256], [0, k0_21])
-                    gamma_8: pl.Tensor[[1, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 1024, 84)] = pl.tensor.view(post_rms_weight_0, [1, 256], [0, k0_21])
-                    _t51: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 85)] = pl.tensor.row_expand_mul(x_chunk_16, inv_rms_1)
-                    normed_8: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 86)] = pl.tensor.col_expand_mul(_t51, gamma_8)
-                    _t52: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 87)] = pl.tensor.cast(normed_8, target_type=pl.BFLOAT16, mode=2)
-                    post_norm_tile_3: pl.Tensor[[4, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 40960, 88)] = pl.tensor.assemble(post_norm_tile_iter_1, _t52, [0, k0_21])
+                    x_chunk_16: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 84)] = pl.tensor.view(resid1_tile_iter_1_outer_l0_rv, [4, 256], [0, k0_21])
+                    gamma_8: pl.Tensor[[1, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 1024, 85)] = pl.tensor.view(post_rms_weight_0, [1, 256], [0, k0_21])
+                    _t51: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 86)] = pl.tensor.row_expand_mul(x_chunk_16, inv_rms_1)
+                    normed_8: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 87)] = pl.tensor.col_expand_mul(_t51, gamma_8)
+                    _t52: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 88)] = pl.tensor.cast(normed_8, target_type=pl.BFLOAT16, mode=2)
+                    post_norm_tile_3: pl.Tensor[[4, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 40960, 89)] = pl.tensor.assemble(post_norm_tile_iter_1, _t52, [0, k0_21])
                     gamma_7, k0_20, normed_7, post_norm_tile_2, x_chunk_15 = pl.yield_(gamma_8, k0_21, normed_8, post_norm_tile_3, x_chunk_16)
                 for ob_3, (down_proj_tile_iter_2, k0_iter_22, kb_iter_12, o0_iter_1, out_iter_5) in pl.range(0, 100, 1, init_values=(down_proj_tile_1, k0_20, kb_11, o0_0, out_iter_3)):
                     o0_3: pl.Scalar[pl.INDEX] = ob_3 * 256
-                    gate_acc_0: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 93)] = pl.tensor.create([4, 256], dtype=pl.FP32)
-                    up_acc_0: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 94)] = pl.tensor.create([4, 256], dtype=pl.FP32)
-                    gate_acc_1: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 95)] = pl.tensor.mul(gate_acc_0, 0.0)
-                    up_acc_1: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 96)] = pl.tensor.mul(up_acc_0, 0.0)
+                    gate_acc_0: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 94)] = pl.tensor.create([4, 256], dtype=pl.FP32)
+                    up_acc_0: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 95)] = pl.tensor.create([4, 256], dtype=pl.FP32)
+                    gate_acc_1: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 96)] = pl.tensor.mul(gate_acc_0, 0.0)
+                    up_acc_1: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 97)] = pl.tensor.mul(up_acc_0, 0.0)
                     for kb_14, (gate_acc_iter_2, k0_iter_24, up_acc_iter_2) in pl.range(0, 20, 1, init_values=(gate_acc_1, k0_iter_22, up_acc_1)):
                         k0_26: pl.Scalar[pl.INDEX] = kb_14 * 256
-                        post_chunk_0: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 97)] = pl.tensor.view(post_norm_tile_2, [4, 256], [0, k0_26])
-                        wg_0: pl.Tensor[[256, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 131072, 98)] = pl.tensor.view(w_gate_0, [256, 256], [k0_26, o0_3])
-                        wu_0: pl.Tensor[[256, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 131072, 99)] = pl.tensor.view(w_up_0, [256, 256], [k0_26, o0_3])
-                        _t53: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 100)] = pl.tensor.matmul(post_chunk_0, wg_0, a_trans=False, b_trans=False, c_matrix_nz=False)
-                        gate_acc_4: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 101)] = pl.tensor.add(gate_acc_iter_2, _t53)
-                        _t54: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 102)] = pl.tensor.matmul(post_chunk_0, wu_0, a_trans=False, b_trans=False, c_matrix_nz=False)
-                        up_acc_4: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 103)] = pl.tensor.add(up_acc_iter_2, _t54)
+                        post_chunk_0: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 98)] = pl.tensor.view(post_norm_tile_2, [4, 256], [0, k0_26])
+                        wg_0: pl.Tensor[[256, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 131072, 99)] = pl.tensor.view(w_gate_0, [256, 256], [k0_26, o0_3])
+                        wu_0: pl.Tensor[[256, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 131072, 100)] = pl.tensor.view(w_up_0, [256, 256], [k0_26, o0_3])
+                        _t53: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 101)] = pl.tensor.matmul(post_chunk_0, wg_0, a_trans=False, b_trans=False, c_matrix_nz=False)
+                        gate_acc_4: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 102)] = pl.tensor.add(gate_acc_iter_2, _t53)
+                        _t54: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 103)] = pl.tensor.matmul(post_chunk_0, wu_0, a_trans=False, b_trans=False, c_matrix_nz=False)
+                        up_acc_4: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 104)] = pl.tensor.add(up_acc_iter_2, _t54)
                         gate_acc_3, k0_25, up_acc_3 = pl.yield_(gate_acc_4, k0_26, up_acc_4)
-                    _t55: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 106)] = pl.tensor.neg(gate_acc_3)
-                    _t56: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 107)] = pl.tensor.exp(_t55)
-                    _t57: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 108)] = pl.tensor.add(_t56, 1.0)
-                    sigmoid_0: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 109)] = pl.tensor.recip(_t57)
-                    _t58: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 110)] = pl.tensor.mul(gate_acc_3, sigmoid_0)
-                    mlp_chunk_0: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 111)] = pl.tensor.mul(_t58, up_acc_3)
-                    mlp_chunk_bf16_0: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 112)] = pl.tensor.cast(mlp_chunk_0, target_type=pl.BFLOAT16, mode=2)
+                    _t55: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 107)] = pl.tensor.neg(gate_acc_3)
+                    _t56: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 108)] = pl.tensor.exp(_t55)
+                    _t57: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 109)] = pl.tensor.add(_t56, 1.0)
+                    sigmoid_0: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 110)] = pl.tensor.recip(_t57)
+                    _t58: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 111)] = pl.tensor.mul(gate_acc_3, sigmoid_0)
+                    mlp_chunk_0: pl.Tensor[[4, 256], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 4096, 112)] = pl.tensor.mul(_t58, up_acc_3)
+                    mlp_chunk_bf16_0: pl.Tensor[[4, 256], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 2048, 113)] = pl.tensor.cast(mlp_chunk_0, target_type=pl.BFLOAT16, mode=2)
                     for dob_0_out, (down_proj_tile_iter_4_outer_l0, out_iter_7_outer_l0) in pl.range(0, 10, 1, init_values=(down_proj_tile_iter_2, out_iter_5)):
                         ret: pl.Tuple([pl.Tensor[[4, 5120], pl.FP32], pl.Tensor[[16, 4096, 5120], pl.BFLOAT16]]) = self.call_group(qwen3_prefill_layer_incore_4_group, b_0, dob_0_out, down_proj_tile_1, down_proj_tile_iter_2, down_proj_tile_iter_4_outer_l0, mlp_chunk_bf16_0, o0_3, ob_3, out_0, out_iter_1, out_iter_3, out_iter_5, out_iter_7_outer_l0, p0_0, resid1_tile_iter_1_outer_l0_rv, w_down_0)
-                        down_proj_tile_iter_4_outer_l1_rv: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 113)] = ret[0]
-                        out_iter_7_outer_l1_rv: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 671088640, 114)] = ret[1]
+                        down_proj_tile_iter_4_outer_l1_rv: pl.Tensor[[4, 5120], pl.FP32, pl.MemRef(pl.MemorySpace.DDR, -1, 81920, 114)] = ret[0]
+                        out_iter_7_outer_l1_rv: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16, pl.MemRef(pl.MemorySpace.DDR, -1, 671088640, 115)] = ret[1]
                         down_proj_tile_iter_4_outer_l0_rv, out_iter_7_outer_l0_rv = pl.yield_(down_proj_tile_iter_4_outer_l1_rv, out_iter_7_outer_l1_rv)
                     down_proj_tile_3, k0_23, kb_13, o0_2, out_6 = pl.yield_(down_proj_tile_iter_4_outer_l0_rv, k0_25, kb_14, o0_3, out_iter_7_outer_l0_rv)
                 k_cache_4, out_4, v_cache_4 = pl.yield_(k_cache_6, out_6, v_cache_6)

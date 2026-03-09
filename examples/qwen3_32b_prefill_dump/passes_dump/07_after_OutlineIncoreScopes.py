@@ -187,9 +187,13 @@ class Qwen3SingleLayerPrefill:
             down_proj_tile_iter_4_outer_l1_rv, out_iter_7_outer_l1_rv = pl.yield_(down_proj_tile_6, out_10)
         return down_proj_tile_iter_4_outer_l1_rv, out_iter_7_outer_l1_rv
     @pl.function(type=pl.FunctionType.Orchestration)
-    def qwen3_prefill_layer(self, hidden_states_0: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16], rope_cos_0: pl.Tensor[[4096, 128], pl.FP32], rope_sin_0: pl.Tensor[[4096, 128], pl.FP32], k_cache_0: pl.Tensor[[524288, 128], pl.BFLOAT16], v_cache_0: pl.Tensor[[524288, 128], pl.BFLOAT16], input_rms_weight_0: pl.Tensor[[1, 5120], pl.FP32], wq_0: pl.Tensor[[5120, 5120], pl.BFLOAT16], wk_0: pl.Tensor[[5120, 1024], pl.BFLOAT16], wv_0: pl.Tensor[[5120, 1024], pl.BFLOAT16], wo_0: pl.Tensor[[5120, 5120], pl.BFLOAT16], post_rms_weight_0: pl.Tensor[[1, 5120], pl.FP32], w_gate_0: pl.Tensor[[5120, 25600], pl.BFLOAT16], w_up_0: pl.Tensor[[5120, 25600], pl.BFLOAT16], w_down_0: pl.Tensor[[25600, 5120], pl.BFLOAT16], out_0: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16]) -> pl.Tensor[[16, 4096, 5120], pl.BFLOAT16]:
+    def qwen3_prefill_layer(self, hidden_states_0: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16], seq_lens_0: pl.Tensor[[16], pl.INT32], rope_cos_0: pl.Tensor[[4096, 128], pl.FP32], rope_sin_0: pl.Tensor[[4096, 128], pl.FP32], k_cache_0: pl.Tensor[[524288, 128], pl.BFLOAT16], v_cache_0: pl.Tensor[[524288, 128], pl.BFLOAT16], input_rms_weight_0: pl.Tensor[[1, 5120], pl.FP32], wq_0: pl.Tensor[[5120, 5120], pl.BFLOAT16], wk_0: pl.Tensor[[5120, 1024], pl.BFLOAT16], wv_0: pl.Tensor[[5120, 1024], pl.BFLOAT16], wo_0: pl.Tensor[[5120, 5120], pl.BFLOAT16], post_rms_weight_0: pl.Tensor[[1, 5120], pl.FP32], w_gate_0: pl.Tensor[[5120, 25600], pl.BFLOAT16], w_up_0: pl.Tensor[[5120, 25600], pl.BFLOAT16], w_down_0: pl.Tensor[[25600, 5120], pl.BFLOAT16], out_0: pl.Tensor[[16, 4096, 5120], pl.BFLOAT16]) -> pl.Tensor[[16, 4096, 5120], pl.BFLOAT16]:
         for b_0, (k_cache_iter_1, out_iter_1, v_cache_iter_1) in pl.parallel(0, 16, 1, init_values=(k_cache_0, out_0, v_cache_0), chunk=4):
-            for p0_0, (k_cache_iter_3, out_iter_3, v_cache_iter_3) in pl.range(0, 4096, 4, init_values=(k_cache_iter_1, out_iter_1, v_cache_iter_1)):
+            seq_len_b_0: pl.Scalar[pl.INT32] = pl.tensor.read(seq_lens_0, [b_0])
+            tok_blocks_0: pl.Scalar[pl.INDEX] = (pl.cast(seq_len_b_0, pl.INDEX) + 4 - 1) // 4
+            for p0_idx_0, (k_cache_iter_3, out_iter_3, v_cache_iter_3) in pl.range(0, tok_blocks_0, 1, init_values=(k_cache_iter_1, out_iter_1, v_cache_iter_1)):
+                p0_0: pl.Scalar[pl.INDEX] = p0_idx_0 * 4
+                valid_tok_0: pl.Scalar[pl.INDEX] = min(4, pl.cast(seq_len_b_0, pl.INDEX) - p0_0)
                 sq_sum_0: pl.Tensor[[4, 1], pl.FP32] = pl.tensor.create([4, 1], dtype=pl.FP32)
                 sq_sum_1: pl.Tensor[[4, 1], pl.FP32] = pl.tensor.mul(sq_sum_0, 0.0)
                 for kb_0, (sq_sum_iter_2,) in pl.range(0, 20, 1, init_values=(sq_sum_1,)):
@@ -225,7 +229,7 @@ class Qwen3SingleLayerPrefill:
                     gamma_iter_1_outer_l0_rv, k0_iter_6_outer_l0_rv, k_proj_tile_iter_1_outer_l0_rv, kb_iter_4_outer_l0_rv, normed_iter_1_outer_l0_rv, v_proj_tile_iter_1_outer_l0_rv, x_chunk_iter_6_outer_l0_rv = pl.yield_(gamma_iter_1_outer_l1_rv, k0_iter_6_outer_l1_rv, k_proj_tile_iter_1_outer_l1_rv, kb_iter_4_outer_l1_rv, normed_iter_1_outer_l1_rv, v_proj_tile_iter_1_outer_l1_rv, x_chunk_iter_6_outer_l1_rv)
                 attn_tile_0: pl.Tensor[[4, 5120], pl.FP32] = pl.tensor.create([4, 5120], dtype=pl.FP32)
                 attn_tile_1: pl.Tensor[[4, 5120], pl.FP32] = pl.tensor.mul(attn_tile_0, 0.0)
-                for ti_0, (attn_tile_iter_2, k_cache_iter_5, v_cache_iter_5) in pl.range(0, 4, 1, init_values=(attn_tile_1, k_cache_iter_3, v_cache_iter_3)):
+                for ti_0, (attn_tile_iter_2, k_cache_iter_5, v_cache_iter_5) in pl.range(0, valid_tok_0, 1, init_values=(attn_tile_1, k_cache_iter_3, v_cache_iter_3)):
                     pos_0: pl.Scalar[pl.INDEX] = p0_0 + ti_0
                     ctx_len_0: pl.Scalar[pl.INDEX] = pos_0 + 1
                     ctx_blocks_0: pl.Scalar[pl.INDEX] = (ctx_len_0 + 120 - 1) // 120

@@ -1,19 +1,19 @@
-# Qwen3-32B Prefill Kernel Local Tensor Summary
+# Qwen3 32B Prefill — Kernel Local Tensor SRAM Summary
 
-## 1) Plan and Execution
+## 1) Overview
 
-1. Create `examples/qwen3_32b_prefill.py` from decode-style structure, targeting prefill (`batch=16`, `seq<=4096`).
-2. Use three major `auto_incore` scopes per token tile:
-   - Scope A: RMSNorm + QKV projection
-   - Scope B: RoPE + KV cache update + causal attention
-   - Scope C: O projection + residual + post RMSNorm + MLP + residual
-3. Build with `dump_passes=True` to generate expanded kernels in `qwen3_32b_prefill_dump`.
-4. Parse `passes_dump/13_after_AllocateMemoryAddr.py` to estimate local tensor size per InCore function/group.
-5. Validate constraints:
-   - AIC <= 256KB
-   - AIV <= 192KB
+Single-layer prefill forward for Qwen3 32B with **variable-length input** per
+session.  Each batch item can have a different input sequence length (up to
+4096), passed via the `seq_lens` input tensor (`[BATCH], INT32`).  Tensors are
+padded to `MAX_SEQ` on the sequence axis; only valid tokens are processed.
 
-## 2) Prefill Program Knobs
+## 2) Model Config
+
+- `BATCH=16`, `MAX_SEQ=4096`, `HIDDEN=5120`
+- `NUM_HEADS=64`, `NUM_KV_HEADS=8`, `HEAD_DIM=128`
+- `INTERMEDIATE=25600`
+
+## 3) Tuning Knobs
 
 - `K_CHUNK=256`
 - `Q_OUT_CHUNK=64`
@@ -22,34 +22,37 @@
 - `MLP_OUT_CHUNK=256`
 - `TOK_TILE=4`
 
-## 3) Build Result
+## 4) Variable Sequence Length Support
 
-- Build executed and pass dumps generated successfully up to allocation/report stages.
-- Final codegen still hits backend limitation (`No codegen registered for operation: comm.aic_initialize_pipe`), same class of limitation observed in related mixed-kernel experiments.
-- Required analysis artifacts are present:
-  - `passes_dump/08_after_ExpandMixedKernel.py`
-  - `passes_dump/13_after_AllocateMemoryAddr.py`
-  - `report/memory_after_AllocateMemoryAddr.txt`
+- `seq_lens: Tensor[[BATCH], INT32]` — per-session input token count.
+- Token iteration: `tok_blocks = ceil(seq_len_b / TOK_TILE)`.
+- **Scope 1 & 3**: Always use full `[TOK_TILE, ...]` views from GM tensors
+  (512-B aligned); padding rows in the tail tile map to allocated-but-unused
+  MAX_SEQ slots.
+- **Scope 2** (attention + KV cache write): iterates only over `valid_tok`
+  tokens (`for ti in pl.range(valid_tok)`) to avoid writing garbage into
+  the KV cache.  Padding rows in `attn_tile` stay zero; scope 3 writes them
+  to the padding area of `out` which the caller ignores.
 
-## 4) Local Tensor Statistics (Function-level)
+## 5) Function-Level Statistics
 
-| InCore function | Local tensor total (B) | Buffers |
+| InCore Function | Local Tensor Size (B) | Buffers |
 |---|---:|---:|
 | `qwen3_prefill_layer_incore_2_aic` | 248,256 | 17 |
 | `qwen3_prefill_layer_incore_0_aic` | 140,288 | 13 |
 | `qwen3_prefill_layer_incore_1_aic` | 140,288 | 21 |
 | `qwen3_prefill_layer_incore_3_aic` | 140,288 | 13 |
+| `qwen3_prefill_layer_incore_4_aic` | 132,096 | 8 |
 | `qwen3_prefill_layer_incore_3_aiv` | 104,960 | 11 |
 | `qwen3_prefill_layer_incore_4_aiv` | 101,376 | 9 |
 | `qwen3_prefill_layer_incore_0_aiv` | 72,704 | 13 |
 | `qwen3_prefill_layer_incore_2_aiv` | 57,696 | 41 |
 | `qwen3_prefill_layer_incore_1_aiv` | 48,128 | 20 |
-| `qwen3_prefill_layer_incore_4_aic` | 132,096 | 8 |
 | **Total** | **1,186,080** | - |
 
-## 5) Group-level Split (AIC/AIV side-by-side)
+## 6) Group-Level Statistics (AIC / AIV split)
 
-| function_group | AIC (B) | AIV (B) | Solo (B) |
+| Logical Kernel | AIC (B) | AIV (B) | Solo (B) |
 |---|---:|---:|---:|
 | `qwen3_prefill_layer_incore_2` | 248,256 | 57,696 | 0 |
 | `qwen3_prefill_layer_incore_0` | 140,288 | 72,704 | 0 |
@@ -57,15 +60,13 @@
 | `qwen3_prefill_layer_incore_3` | 140,288 | 104,960 | 0 |
 | `qwen3_prefill_layer_incore_4` | 132,096 | 101,376 | 0 |
 
-## 6) Constraint Check
+## 7) Constraint Check
 
-- **AIC 256KB limit**: PASS (max AIC = `248,256 B`)
-- **AIV 192KB limit**: PASS (max AIV = `104,960 B`)
+- **AIC 256KB limit**: PASS (max AIC = `248,256 B` < 262,144)
+- **AIV 192KB limit**: PASS (max AIV = `104,960 B` < 196,608)
 
-## 7) Tuning Notes
+## 8) Tuning Notes
 
-- The current knobs intentionally keep the largest AIC kernel close to, but below, 256KB.
-- Structural fusion removed the two tiny solo kernels (`incore_2`, `incore_6` in previous revision).
-- Current smallest item is `qwen3_prefill_layer_incore_1_aiv` (`48,128 B`).
-- `qwen3_prefill_layer_incore_4_aic` has been uplifted to `132,096 B` (from `17,408 B` in the earlier baseline).
-- If further uplift is required, the next target is `incore_4` AIC-side utilization.
+- `qwen3_prefill_layer_incore_4_aic` uplifted to `132,096 B` (from `17,408 B`
+  baseline) by increasing `MLP_OUT_CHUNK` to 256.
+- Current smallest item: `qwen3_prefill_layer_incore_1_aiv` (`48,128 B`).

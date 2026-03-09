@@ -7,13 +7,23 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 
 """
-Qwen3 single-layer prefill forward (batch=16, seq<=4096).
+Qwen3 single-layer prefill forward (batch=16, max_seq=4096).
+
+Each session in the batch can have a different input sequence length (up to
+MAX_SEQ).  The ``seq_lens`` input tensor (shape [BATCH], INT32) carries the
+per-session token count.  Tensors are padded to MAX_SEQ on the sequence axis;
+the program only processes valid tokens per session.
 
 Design goals:
 - keep a decode-like structure and reuse the same primitive ops
 - fuse work in three large auto_incore scopes per token-tile
-- tune tile/chunk sizes so local tensors fit mixed-kernel SRAM limits
+- all pl.view / pl.slice of GM tensors use 512-B-aligned shapes
+  (full TOK_TILE rows even on the tail tile; padding rows are harmless)
+- scope 2 (attention + KV cache write) iterates only over valid tokens
+  to avoid writing garbage into the KV cache
 """
+
+import os
 
 import pypto.language as pl
 
@@ -43,7 +53,7 @@ TOK_TILE = 4
 
 def build_qwen3_single_layer_prefill_program(
     batch: int = BATCH,
-    seq_len: int = MAX_SEQ,
+    max_seq_len: int = MAX_SEQ,
     hidden_size: int = HIDDEN,
     num_heads: int = NUM_HEADS,
     num_kv_heads: int = NUM_KV_HEADS,
@@ -51,7 +61,7 @@ def build_qwen3_single_layer_prefill_program(
     intermediate_size: int = INTERMEDIATE,
 ):
     BATCH_CFG = batch
-    SEQ_CFG = seq_len
+    MAX_SEQ_CFG = max_seq_len
     HIDDEN_CFG = hidden_size
     NUM_HEADS_CFG = num_heads
     NUM_KV_HEADS_CFG = num_kv_heads
@@ -64,16 +74,17 @@ def build_qwen3_single_layer_prefill_program(
     Q_OUT_BLOCKS = (HIDDEN_CFG + Q_OUT_CHUNK - 1) // Q_OUT_CHUNK
     KV_OUT_BLOCKS = (KV_HIDDEN_CFG + KV_OUT_CHUNK - 1) // KV_OUT_CHUNK
     MLP_OUT_BLOCKS = (INTER_CFG + MLP_OUT_CHUNK - 1) // MLP_OUT_CHUNK
-    CACHE_ROWS = BATCH_CFG * NUM_KV_HEADS_CFG * SEQ_CFG
+    CACHE_ROWS = BATCH_CFG * NUM_KV_HEADS_CFG * MAX_SEQ_CFG
 
     @pl.program
     class Qwen3SingleLayerPrefill:
         @pl.function(type=pl.FunctionType.Opaque)
         def qwen3_prefill_layer(
             self,
-            hidden_states: pl.Tensor[[BATCH_CFG, SEQ_CFG, HIDDEN_CFG], pl.BF16],
-            rope_cos: pl.Tensor[[SEQ_CFG, HEAD_DIM_CFG], pl.FP32],
-            rope_sin: pl.Tensor[[SEQ_CFG, HEAD_DIM_CFG], pl.FP32],
+            hidden_states: pl.Tensor[[BATCH_CFG, MAX_SEQ_CFG, HIDDEN_CFG], pl.BF16],
+            seq_lens: pl.Tensor[[BATCH_CFG], pl.INT32],
+            rope_cos: pl.Tensor[[MAX_SEQ_CFG, HEAD_DIM_CFG], pl.FP32],
+            rope_sin: pl.Tensor[[MAX_SEQ_CFG, HEAD_DIM_CFG], pl.FP32],
             k_cache: pl.Tensor[[CACHE_ROWS, HEAD_DIM_CFG], pl.BF16],
             v_cache: pl.Tensor[[CACHE_ROWS, HEAD_DIM_CFG], pl.BF16],
             input_rms_weight: pl.Tensor[[1, HIDDEN_CFG], pl.FP32],
@@ -85,11 +96,18 @@ def build_qwen3_single_layer_prefill_program(
             w_gate: pl.Tensor[[HIDDEN_CFG, INTER_CFG], pl.BF16],
             w_up: pl.Tensor[[HIDDEN_CFG, INTER_CFG], pl.BF16],
             w_down: pl.Tensor[[INTER_CFG, HIDDEN_CFG], pl.BF16],
-            out: pl.Tensor[[BATCH_CFG, SEQ_CFG, HIDDEN_CFG], pl.BF16],
-        ) -> pl.Tensor[[BATCH_CFG, SEQ_CFG, HIDDEN_CFG], pl.BF16]:
+            out: pl.Tensor[[BATCH_CFG, MAX_SEQ_CFG, HIDDEN_CFG], pl.BF16],
+        ) -> pl.Tensor[[BATCH_CFG, MAX_SEQ_CFG, HIDDEN_CFG], pl.BF16]:
             for b in pl.parallel(0, BATCH_CFG, 1, chunk=4):
-                for p0 in pl.range(0, SEQ_CFG, TOK_TILE):
+                seq_len_b = pl.tensor.read(seq_lens, [b])
+                tok_blocks = (seq_len_b + TOK_TILE - 1) // TOK_TILE
+                for p0_idx in pl.range(tok_blocks):
+                    p0 = p0_idx * TOK_TILE
+                    valid_tok = pl.min(TOK_TILE, seq_len_b - p0)
                     # Scope 1: RMSNorm + Q/K/V projections for a token tile.
+                    # Uses full [TOK_TILE, ...] views from hidden_states even on the
+                    # tail tile — padding rows map to allocated-but-unused MAX_SEQ
+                    # slots, keeping every GM view >= 512 B aligned.
                     with pl.auto_incore():
                         sq_sum = pl.create_tensor([TOK_TILE, 1], dtype=pl.FP32)
                         sq_sum = pl.mul(sq_sum, 0.0)
@@ -145,10 +163,14 @@ def build_qwen3_single_layer_prefill_program(
                             v_proj_tile = pl.assemble(v_proj_tile, pl.cast(v_acc, target_type=pl.BF16), [0, kv0])
 
                     # Scope 2: RoPE + KV cache update + causal attention.
+                    # Only valid tokens are processed (for ti in range(valid_tok))
+                    # to avoid writing garbage into the KV cache.  Padding rows in
+                    # attn_tile stay zero; scope 3 writes them to the padding area
+                    # of `out` which the caller ignores.
                     with pl.auto_incore():
                         attn_tile = pl.create_tensor([TOK_TILE, HIDDEN_CFG], dtype=pl.FP32)
                         attn_tile = pl.mul(attn_tile, 0.0)
-                        for ti in pl.range(TOK_TILE):
+                        for ti in pl.range(valid_tok):
                             pos = p0 + ti
                             ctx_len = pos + 1
                             ctx_blocks = (ctx_len + SEQ_TILE - 1) // SEQ_TILE
@@ -183,7 +205,7 @@ def build_qwen3_single_layer_prefill_program(
                                         pl.add(pl.col_expand_mul(k_hi, cos_hi), pl.col_expand_mul(k_lo, sin_hi)),
                                         [0, HEAD_DIM_CFG // 2],
                                     )
-                                    cache_row = b * NUM_KV_HEADS_CFG * SEQ_CFG + kvh * SEQ_CFG + pos
+                                    cache_row = b * NUM_KV_HEADS_CFG * MAX_SEQ_CFG + kvh * MAX_SEQ_CFG + pos
                                     k_cache = pl.assemble(
                                         k_cache,
                                         pl.cast(k_rot, target_type=pl.BF16),
@@ -223,7 +245,7 @@ def build_qwen3_single_layer_prefill_program(
                                 for sb in pl.range(ctx_blocks):
                                     s0 = sb * SEQ_TILE
                                     valid_len = pl.min(SEQ_TILE, ctx_len - s0)
-                                    cache_row0 = b * NUM_KV_HEADS_CFG * SEQ_CFG + kvh * SEQ_CFG + s0
+                                    cache_row0 = b * NUM_KV_HEADS_CFG * MAX_SEQ_CFG + kvh * MAX_SEQ_CFG + s0
                                     k_tile = pl.view(k_cache, [SEQ_TILE, HEAD_DIM_CFG], [cache_row0, 0])
                                     v_tile = pl.view(v_cache, [SEQ_TILE, HEAD_DIM_CFG], [cache_row0, 0])
                                     scores = pl.mul(pl.matmul(q_rot_bf16, k_tile, b_trans=True), ATTN_SCALE)
@@ -336,3 +358,116 @@ def build_qwen3_single_layer_prefill_program(
             return out
 
     return Qwen3SingleLayerPrefill
+
+
+# ---------------------------------------------------------------------------
+# Build / run helpers
+# ---------------------------------------------------------------------------
+
+
+def build_tensor_specs(
+    batch: int = BATCH,
+    max_seq_len: int = MAX_SEQ,
+    hidden_size: int = HIDDEN,
+    num_heads: int = NUM_HEADS,
+    num_kv_heads: int = NUM_KV_HEADS,
+    head_dim: int = HEAD_DIM,
+    intermediate_size: int = INTERMEDIATE,
+):
+    import torch  # type: ignore[import]
+    from pypto.runtime import TensorSpec
+
+    kv_hidden = num_kv_heads * head_dim
+    cache_rows = batch * num_kv_heads * max_seq_len
+
+    seq_lens_data = torch.randint(1, max_seq_len + 1, (batch,), dtype=torch.int32)
+
+    return [
+        TensorSpec("hidden_states", [batch, max_seq_len, hidden_size], torch.bfloat16, init_value=torch.randn),
+        TensorSpec("seq_lens", [batch], torch.int32, init_value=seq_lens_data),
+        TensorSpec("rope_cos", [max_seq_len, head_dim], torch.float32, init_value=torch.randn),
+        TensorSpec("rope_sin", [max_seq_len, head_dim], torch.float32, init_value=torch.randn),
+        TensorSpec("k_cache", [cache_rows, head_dim], torch.bfloat16, init_value=torch.randn),
+        TensorSpec("v_cache", [cache_rows, head_dim], torch.bfloat16, init_value=torch.randn),
+        TensorSpec("input_rms_weight", [1, hidden_size], torch.float32, init_value=torch.randn),
+        TensorSpec("wq", [hidden_size, hidden_size], torch.bfloat16, init_value=torch.randn),
+        TensorSpec("wk", [hidden_size, kv_hidden], torch.bfloat16, init_value=torch.randn),
+        TensorSpec("wv", [hidden_size, kv_hidden], torch.bfloat16, init_value=torch.randn),
+        TensorSpec("wo", [hidden_size, hidden_size], torch.bfloat16, init_value=torch.randn),
+        TensorSpec("post_rms_weight", [1, hidden_size], torch.float32, init_value=torch.randn),
+        TensorSpec("w_gate", [hidden_size, intermediate_size], torch.bfloat16, init_value=torch.randn),
+        TensorSpec("w_up", [hidden_size, intermediate_size], torch.bfloat16, init_value=torch.randn),
+        TensorSpec("w_down", [intermediate_size, hidden_size], torch.bfloat16, init_value=torch.randn),
+        TensorSpec("out", [batch, max_seq_len, hidden_size], torch.bfloat16, is_output=True),
+    ]
+
+
+def compile_and_run(
+    batch: int = BATCH,
+    max_seq_len: int = MAX_SEQ,
+    hidden_size: int = HIDDEN,
+    num_heads: int = NUM_HEADS,
+    num_kv_heads: int = NUM_KV_HEADS,
+    head_dim: int = HEAD_DIM,
+    intermediate_size: int = INTERMEDIATE,
+    platform: str = "a2a3",
+    device_id: int = 11,
+    work_dir: str | None = None,
+    dump_passes: bool = True,
+):
+    from pypto.backend import BackendType
+    from pypto.ir.pass_manager import OptimizationStrategy
+    from pypto.runtime import RunConfig, run
+
+    program = build_qwen3_single_layer_prefill_program(
+        batch=batch,
+        max_seq_len=max_seq_len,
+        hidden_size=hidden_size,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        intermediate_size=intermediate_size,
+    )
+
+    tensor_specs = build_tensor_specs(
+        batch=batch,
+        max_seq_len=max_seq_len,
+        hidden_size=hidden_size,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        intermediate_size=intermediate_size,
+    )
+
+    if work_dir is None:
+        work_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "qwen3_32b_prefill_dump"))
+
+    result = run(
+        program=program,
+        tensor_specs=tensor_specs,
+        golden=None,
+        config=RunConfig(
+            platform=platform,
+            device_id=device_id,
+            rtol=2e-2,
+            atol=2e-2,
+            strategy=OptimizationStrategy.Default,
+            dump_passes=dump_passes,
+            backend_type=BackendType.CCE,
+            work_dir=work_dir,
+        ),
+    )
+    if not result.passed and result.error and "code_runner" in result.error:
+        print("Result: COMPILE OK — device run skipped (code_runner not found).")
+        print("  Generated kernels/orchestration:", work_dir)
+        return result
+    if not result.passed and result.error:
+        print(f"Result: {result.error}")
+        print("  Pass dumps may still have been written to:", work_dir)
+    else:
+        print("  Generated kernels/orchestration:", work_dir)
+    return result
+
+
+if __name__ == "__main__":
+    compile_and_run()
