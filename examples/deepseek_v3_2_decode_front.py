@@ -36,7 +36,7 @@ import pypto.language as pl
 BATCH = 16
 MAX_SEQ = 4096
 HIDDEN = 7168
-NUM_HEADS = 128
+NUM_HEADS = 1
 Q_LORA_RANK = 1536
 KV_LORA_RANK = 512
 QK_NOPE_HEAD_DIM = 128
@@ -232,23 +232,23 @@ def build_deepseek_v3_2_decode_front_program(
                 for b in pl.parallel(0, BATCH_CFG, 1, chunk=4):
                     ctx_len = pl.tensor.read(seq_lens, [b])
                     pos = ctx_len - 1
-                    cos_row = pl.slice(rope_cos, [1, QK_ROPE_HEAD_DIM_CFG], [pos, 0])
-                    sin_row = pl.slice(rope_sin, [1, QK_ROPE_HEAD_DIM_CFG], [pos, 0])
-                    cos_lo = pl.slice(cos_row, [1, QK_ROPE_HEAD_DIM_CFG // 2], [0, 0])
-                    cos_hi = pl.slice(cos_row, [1, QK_ROPE_HEAD_DIM_CFG // 2], [0, QK_ROPE_HEAD_DIM_CFG // 2])
-                    sin_lo = pl.slice(sin_row, [1, QK_ROPE_HEAD_DIM_CFG // 2], [0, 0])
-                    sin_hi = pl.slice(sin_row, [1, QK_ROPE_HEAD_DIM_CFG // 2], [0, QK_ROPE_HEAD_DIM_CFG // 2])
+                    cos_lo = pl.slice(rope_cos, [1, QK_ROPE_HEAD_DIM_CFG // 2], [pos, 0])
+                    cos_hi = pl.slice(rope_cos, [1, QK_ROPE_HEAD_DIM_CFG // 2], [pos, QK_ROPE_HEAD_DIM_CFG // 2])
+                    sin_lo = pl.slice(rope_sin, [1, QK_ROPE_HEAD_DIM_CFG // 2], [pos, 0])
+                    sin_hi = pl.slice(rope_sin, [1, QK_ROPE_HEAD_DIM_CFG // 2], [pos, QK_ROPE_HEAD_DIM_CFG // 2])
 
                     cache_row = b * MAX_SEQ_CFG + pos
                     kv_row = pl.cast(pl.slice(kv_a, [1, KV_LORA_RANK_CFG], [b, 0]), target_type=pl.FP32)
                     kv_gamma = pl.slice(kv_norm_weight, [1, KV_LORA_RANK_CFG], [0, 0])
                     kv_normed = pl.col_expand_mul(kv_row, kv_gamma)
-                    pe_row = pl.cast(
-                        pl.slice(kv_a, [1, QK_ROPE_HEAD_DIM_CFG], [b, KV_LORA_RANK_CFG]),
+                    pe_lo = pl.cast(
+                        pl.slice(kv_a, [1, QK_ROPE_HEAD_DIM_CFG // 2], [b, KV_LORA_RANK_CFG]),
                         target_type=pl.FP32,
                     )
-                    pe_lo = pl.slice(pe_row, [1, QK_ROPE_HEAD_DIM_CFG // 2], [0, 0])
-                    pe_hi = pl.slice(pe_row, [1, QK_ROPE_HEAD_DIM_CFG // 2], [0, QK_ROPE_HEAD_DIM_CFG // 2])
+                    pe_hi = pl.cast(
+                        pl.slice(kv_a, [1, QK_ROPE_HEAD_DIM_CFG // 2], [b, KV_LORA_RANK_CFG + QK_ROPE_HEAD_DIM_CFG // 2]),
+                        target_type=pl.FP32,
+                    )
                     pe_rot = pl.create_tensor([1, QK_ROPE_HEAD_DIM_CFG], dtype=pl.FP32)
                     pe_lo_cos = pl.col_expand_mul(pe_lo, cos_lo)
                     pe_hi_sin = pl.col_expand_mul(pe_hi, sin_lo)
@@ -283,12 +283,14 @@ def build_deepseek_v3_2_decode_front_program(
                         pl.slice(q_proj, [1, QK_NOPE_HEAD_DIM_CFG], [b, q_col0]),
                         target_type=pl.FP32,
                     )
-                    q_pe0 = pl.cast(
-                        pl.slice(q_proj, [1, QK_ROPE_HEAD_DIM_CFG], [b, q_col0 + QK_NOPE_HEAD_DIM_CFG]),
+                    q0_lo = pl.cast(
+                        pl.slice(q_proj, [1, QK_ROPE_HEAD_DIM_CFG // 2], [b, q_col0 + QK_NOPE_HEAD_DIM_CFG]),
                         target_type=pl.FP32,
                     )
-                    q0_lo = pl.slice(q_pe0, [1, QK_ROPE_HEAD_DIM_CFG // 2], [0, 0])
-                    q0_hi = pl.slice(q_pe0, [1, QK_ROPE_HEAD_DIM_CFG // 2], [0, QK_ROPE_HEAD_DIM_CFG // 2])
+                    q0_hi = pl.cast(
+                        pl.slice(q_proj, [1, QK_ROPE_HEAD_DIM_CFG // 2], [b, q_col0 + QK_NOPE_HEAD_DIM_CFG + QK_ROPE_HEAD_DIM_CFG // 2]),
+                        target_type=pl.FP32,
+                    )
                     q0_rot = pl.create_tensor([1, QK_ROPE_HEAD_DIM_CFG], dtype=pl.FP32)
                     q0_rot = pl.assemble(q0_rot, pl.sub(pl.col_expand_mul(q0_lo, cos_lo), pl.col_expand_mul(q0_hi, sin_lo)), [0, 0])
                     q0_rot = pl.assemble(q0_rot, pl.add(pl.col_expand_mul(q0_hi, cos_hi), pl.col_expand_mul(q0_lo, sin_hi)), [0, QK_ROPE_HEAD_DIM_CFG // 2])
